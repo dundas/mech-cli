@@ -25,6 +25,7 @@ import { useSettings } from '../contexts/SettingsContext.js';
 import { ApprovalMode } from '@google/gemini-cli-core';
 import { StreamingState } from '../types.js';
 import { ConfigInitDisplay } from '../components/ConfigInitDisplay.js';
+import { TodoDisplay } from './TodoDisplay.js';
 
 export const Composer = () => {
   const config = useConfig();
@@ -127,6 +128,8 @@ export const Composer = () => {
           </Box>
         </OverflowProvider>
       )}
+
+      <TodoDisplay />
 
       {uiState.isInputActive && (
         <InputPrompt
