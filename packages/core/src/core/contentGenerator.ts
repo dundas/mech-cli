@@ -19,6 +19,7 @@ import type { Config } from '../config/config.js';
 import type { UserTierId } from '../code_assist/types.js';
 import { LoggingContentGenerator } from './loggingContentGenerator.js';
 import { InstallationManager } from '../utils/installationManager.js';
+import { MechLLMsContentGenerator } from './mechLLMsContentGenerator.js';
 
 /**
  * Interface abstracting the core functionalities for generating content and counting tokens.
@@ -46,6 +47,7 @@ export enum AuthType {
   USE_GEMINI = 'gemini-api-key',
   USE_VERTEX_AI = 'vertex-ai',
   CLOUD_SHELL = 'cloud-shell',
+  USE_MECH_LLMS = 'mech-llms',
 }
 
 export type ContentGeneratorConfig = {
@@ -53,6 +55,7 @@ export type ContentGeneratorConfig = {
   vertexai?: boolean;
   authType?: AuthType;
   proxy?: string;
+  mechLLMsUrl?: string;
 };
 
 export function createContentGeneratorConfig(
@@ -66,6 +69,8 @@ export function createContentGeneratorConfig(
     process.env['GOOGLE_CLOUD_PROJECT_ID'] ||
     undefined;
   const googleCloudLocation = process.env['GOOGLE_CLOUD_LOCATION'] || undefined;
+  const mechLLMsUrl = process.env['MECH_LLMS_URL'] || 'https://llm.mechdna.net';
+  const mechLLMsApiKey = process.env['MECH_LLMS_API_KEY'] || undefined;
 
   const contentGeneratorConfig: ContentGeneratorConfig = {
     authType,
@@ -77,6 +82,13 @@ export function createContentGeneratorConfig(
     authType === AuthType.LOGIN_WITH_GOOGLE ||
     authType === AuthType.CLOUD_SHELL
   ) {
+    return contentGeneratorConfig;
+  }
+
+  if (authType === AuthType.USE_MECH_LLMS) {
+    contentGeneratorConfig.mechLLMsUrl = mechLLMsUrl;
+    contentGeneratorConfig.apiKey = mechLLMsApiKey;
+
     return contentGeneratorConfig;
   }
 
@@ -125,6 +137,19 @@ export async function createContentGenerator(
       ),
       gcConfig,
     );
+  }
+
+  if (config.authType === AuthType.USE_MECH_LLMS) {
+    if (!config.mechLLMsUrl) {
+      throw new Error(
+        'mech-llms URL not configured. Set MECH_LLMS_URL environment variable.',
+      );
+    }
+    const mechLLMsGenerator = new MechLLMsContentGenerator(
+      config.mechLLMsUrl,
+      config.apiKey,
+    );
+    return new LoggingContentGenerator(mechLLMsGenerator, gcConfig);
   }
 
   if (

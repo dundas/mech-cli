@@ -81,6 +81,10 @@ export * from './tools/tool-error.js';
 export * from './tools/tool-registry.js';
 export * from './tools/tool-names.js';
 
+// Export hooks
+export * from './hooks/types.js';
+export * from './hooks/hook-manager.js';
+
 // Export prompt logic
 export * from './prompts/mcp-prompts.js';
 
