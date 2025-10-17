@@ -44,6 +44,8 @@ import levenshtein from 'fast-levenshtein';
 import { ShellToolInvocation } from '../tools/shell.js';
 import type { ToolConfirmationRequest } from '../confirmation-bus/types.js';
 import { MessageBusType } from '../confirmation-bus/types.js';
+import { HookType } from '../hooks/types.js';
+import type { HookInput } from '../hooks/types.js';
 
 export type ValidatingToolCall = {
   status: 'validating';
@@ -992,6 +994,43 @@ export class CoreToolScheduler {
 
         const shellExecutionConfig = this.config.getShellExecutionConfig();
 
+        // Execute PreToolUse hooks
+        const hookManager = this.config.getHookManager();
+        const workspaceContext = this.config.getWorkspaceContext();
+        const directories = workspaceContext.getDirectories();
+        const cwd = directories.length > 0 ? directories[0] : process.cwd();
+        const projectRoot = cwd; // Use workspace directory as project root
+
+        const preToolUseInput: HookInput = {
+          sessionId: callId, // Use callId as session identifier
+          hookType: HookType.PreToolUse,
+          toolName,
+          toolParams: scheduledCall.request.args,
+          cwd,
+          projectRoot,
+          timestamp: Date.now(),
+        };
+
+        const preHookResults = await hookManager.executeHooks(
+          HookType.PreToolUse,
+          preToolUseInput,
+        );
+
+        // Check if any hook requested to block the operation
+        if (hookManager.shouldBlockOperation(preHookResults)) {
+          const blockingMessage = hookManager.getBlockingMessage(preHookResults);
+          this.setStatusInternal(
+            callId,
+            'error',
+            createErrorResponse(
+              scheduledCall.request,
+              new Error(`Hook blocked tool execution: ${blockingMessage}`),
+              ToolErrorType.HOOK_BLOCKED,
+            ),
+          );
+          continue;
+        }
+
         // TODO: Refactor to remove special casing for ShellToolInvocation.
         // Introduce a generic callbacks object for the execute method to handle
         // things like `onPid` and `onLiveOutput`. This will make the scheduler
@@ -1029,6 +1068,40 @@ export class CoreToolScheduler {
               'User cancelled tool execution.',
             );
             continue;
+          }
+
+          // Execute PostToolUse hooks
+          const postToolUseInput: HookInput = {
+            sessionId: callId,
+            hookType: HookType.PostToolUse,
+            toolName,
+            toolParams: scheduledCall.request.args,
+            toolResult: {
+              success: toolResult.error === undefined,
+              error: toolResult.error?.message,
+              output: typeof toolResult.llmContent === 'string'
+                ? toolResult.llmContent
+                : JSON.stringify(toolResult.llmContent),
+            },
+            cwd,
+            projectRoot,
+            timestamp: Date.now(),
+          };
+
+          const postHookResults = await hookManager.executeHooks(
+            HookType.PostToolUse,
+            postToolUseInput,
+          );
+
+          // PostToolUse hooks can observe but not block (they run after execution)
+          // We could log hook errors or warnings here if needed
+          if (hookManager.shouldBlockOperation(postHookResults)) {
+            // Log warning that PostToolUse hooks cannot block
+            if (this.config.getDebugMode()) {
+              console.warn(
+                `PostToolUse hooks requested blocking for ${toolName}, but PostToolUse hooks cannot prevent tool execution (tool already completed)`,
+              );
+            }
           }
 
           if (toolResult.error === undefined) {

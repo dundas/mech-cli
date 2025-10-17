@@ -15,6 +15,7 @@ import type {
   TelemetrySettings,
   AuthType,
   ChatCompressionSettings,
+  HooksConfig,
 } from '@google/gemini-cli-core';
 import {
   DEFAULT_TRUNCATE_TOOL_OUTPUT_LINES,
@@ -107,6 +108,16 @@ const SETTINGS_SCHEMA = {
     description: 'Configuration for MCP servers.',
     showInDialog: false,
     mergeStrategy: MergeStrategy.SHALLOW_MERGE,
+  },
+
+  hooks: {
+    type: 'object',
+    label: 'Hooks',
+    category: 'Advanced',
+    requiresRestart: true,
+    default: undefined as HooksConfig | undefined,
+    description: 'Hook system configuration for intercepting tool execution.',
+    showInDialog: false,
   },
 
   general: {

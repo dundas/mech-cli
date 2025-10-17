@@ -21,6 +21,9 @@ function getAuthTypeFromEnv(): AuthType | undefined {
   if (process.env['GEMINI_API_KEY']) {
     return AuthType.USE_GEMINI;
   }
+  if (process.env['MECH_LLMS_URL']) {
+    return AuthType.USE_MECH_LLMS;
+  }
   return undefined;
 }
 

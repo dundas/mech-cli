@@ -80,6 +80,8 @@ import { ProxyAgent, setGlobalDispatcher } from 'undici';
 
 import { AgentRegistry } from '../agents/registry.js';
 import { SubagentToolWrapper } from '../agents/subagent-tool-wrapper.js';
+import type { HooksConfig } from '../hooks/types.js';
+import { HookManager } from '../hooks/hook-manager.js';
 
 export enum ApprovalMode {
   DEFAULT = 'default',
@@ -282,6 +284,7 @@ export interface ConfigParameters {
   continueOnFailedApiCall?: boolean;
   retryFetchErrors?: boolean;
   enableShellOutputEfficiency?: boolean;
+  hooks?: HooksConfig;
 }
 
 export class Config {
@@ -377,6 +380,7 @@ export class Config {
   private readonly continueOnFailedApiCall: boolean;
   private readonly retryFetchErrors: boolean;
   private readonly enableShellOutputEfficiency: boolean;
+  private readonly hookManager: HookManager;
 
   constructor(params: ConfigParameters) {
     this.sessionId = params.sessionId;
@@ -492,6 +496,7 @@ export class Config {
       format: params.output?.format ?? OutputFormat.TEXT,
     };
     this.retryFetchErrors = params.retryFetchErrors ?? false;
+    this.hookManager = new HookManager(params.hooks, this.debugMode);
 
     if (params.contextFileName) {
       setGeminiMdFilename(params.contextFileName);
@@ -1070,6 +1075,10 @@ export class Config {
 
   getCodebaseInvestigatorSettings(): CodebaseInvestigatorSettings {
     return this.codebaseInvestigatorSettings;
+  }
+
+  getHookManager(): HookManager {
+    return this.hookManager;
   }
 
   async createToolRegistry(): Promise<ToolRegistry> {

@@ -644,6 +644,7 @@ export async function loadCliConfig(
     toolCallCommand: settings.tools?.callCommand,
     mcpServerCommand: settings.mcp?.serverCommand,
     mcpServers,
+    hooks: settings.hooks,
     userMemory: memoryContent,
     geminiMdFileCount: fileCount,
     geminiMdFilePaths: filePaths,

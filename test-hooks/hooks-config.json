@@ -1,0 +1,36 @@
+{
+  "PreToolUse": [
+    {
+      "matcher": "*",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "/Users/kefentse/dev_env/mech/mech-cli/test-hooks/log-hook.sh",
+          "timeout": 5000
+        }
+      ]
+    },
+    {
+      "matcher": "Bash",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "/Users/kefentse/dev_env/mech/mech-cli/test-hooks/block-shell.sh",
+          "timeout": 5000
+        }
+      ]
+    }
+  ],
+  "PostToolUse": [
+    {
+      "matcher": "*",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "/Users/kefentse/dev_env/mech/mech-cli/test-hooks/observe-result.sh",
+          "timeout": 5000
+        }
+      ]
+    }
+  ]
+}

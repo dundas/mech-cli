@@ -43,5 +43,16 @@ export function validateAuthMethod(authMethod: string): string | null {
     return null;
   }
 
+  if (authMethod === AuthType.USE_MECH_LLMS) {
+    if (!process.env['MECH_LLMS_URL']) {
+      return (
+        'MECH_LLMS_URL not found. Please set the MECH_LLMS_URL environment variable.\n' +
+        '\n' +
+        'To continue, please set the MECH_LLMS_URL and optionally MECH_LLMS_API_KEY environment variables or add them to a .env file.'
+      );
+    }
+    return null;
+  }
+
   return 'Invalid auth method selected.';
 }
