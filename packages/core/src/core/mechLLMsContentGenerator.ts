@@ -23,7 +23,9 @@ import { toContents } from '../code_assist/converter.js';
  */
 interface MechLLMsMessage {
   role: 'system' | 'user' | 'assistant' | 'function' | 'tool';
-  content: string | Array<{ type: string; text?: string; [key: string]: unknown }>;
+  content:
+    | string
+    | Array<{ type: string; text?: string; [key: string]: unknown }>;
   name?: string;
   function_call?: unknown;
   tool_calls?: unknown[];
@@ -76,18 +78,79 @@ export class MechLLMsContentGenerator implements ContentGenerator {
   ) {}
 
   /**
+   * Convert Gemini tools to OpenAI tools format
+   * Handles various Gemini tool formats and converts to OpenAI-compatible format
+   */
+  private convertToOpenAITools(tools?: unknown[]): unknown[] | undefined {
+    if (!tools || tools.length === 0) {
+      return undefined;
+    }
+
+    interface FunctionDeclaration {
+      name?: string;
+      description?: string;
+      parametersJsonSchema?: Record<string, unknown>;
+      parameters?: Record<string, unknown>;
+    }
+
+    const functionDeclarations: FunctionDeclaration[] = [];
+
+    // Extract function declarations from various Gemini formats
+    for (const tool of tools) {
+      if (typeof tool !== 'object' || tool === null) continue;
+
+      const toolObj = tool as Record<string, unknown>;
+
+      // Handle { functionDeclarations: [...] } format
+      if (Array.isArray(toolObj.functionDeclarations)) {
+        functionDeclarations.push(...toolObj.functionDeclarations);
+      }
+      // Handle direct FunctionDeclaration format (has 'name' property)
+      else if (toolObj.name) {
+        functionDeclarations.push(toolObj);
+      }
+      // Handle { function: {...} } format (already partially OpenAI-formatted)
+      else if (toolObj.function && typeof toolObj.function === 'object') {
+        functionDeclarations.push(toolObj.function);
+      }
+    }
+
+    // Filter out any declarations without a name and convert to OpenAI format
+    return functionDeclarations
+      .filter((func) => func.name)
+      .map((func) => ({
+        type: 'function',
+        function: {
+          name: func.name,
+          description: func.description || '',
+          // Map Gemini's parametersJsonSchema to OpenAI's parameters
+          parameters: func.parametersJsonSchema ||
+            func.parameters || {
+              type: 'object',
+              properties: {},
+            },
+        },
+      }));
+  }
+
+  /**
    * Convert Gemini Content[] format to mech-llms messages format
    */
   private convertToMechLLMsMessages(contents: Content[]): MechLLMsMessage[] {
     return contents.map((content) => {
-      const role = content.role === 'model' ? 'assistant' : content.role as 'system' | 'user' | 'assistant';
+      const role =
+        content.role === 'model'
+          ? 'assistant'
+          : (content.role as 'system' | 'user' | 'assistant');
 
       // Convert parts array to content string or multipart array
       let messageContent: string | Array<{ type: string; text?: string }>;
 
       if (content.parts && content.parts.length > 0) {
         // Check if all parts are simple text
-        const allText = content.parts.every((part) => typeof part.text === 'string');
+        const allText = content.parts.every(
+          (part) => typeof part.text === 'string',
+        );
 
         if (allText) {
           // Simple text message
@@ -150,7 +213,7 @@ export class MechLLMsContentGenerator implements ContentGenerator {
     if (choice?.message?.tool_calls) {
       for (const toolCall of choice.message.tool_calls) {
         parts.push({
-          functionCall: toolCall as any,
+          functionCall: toolCall as unknown,
         });
       }
     }
@@ -187,19 +250,23 @@ export class MechLLMsContentGenerator implements ContentGenerator {
 
   async generateContent(
     request: GenerateContentParameters,
-    userPromptId: string,
+    _userPromptId: string,
   ): Promise<GenerateContentResponse> {
     const contents = toContents(request.contents);
     const messages = this.convertToMechLLMsMessages(contents);
 
     // Add system instruction as first message if present
     if (request.config?.systemInstruction) {
+      const systemInstruction = request.config.systemInstruction as
+        | string
+        | { text: string }
+        | Content;
       const systemText =
-        typeof request.config.systemInstruction === 'string'
-          ? request.config.systemInstruction
-          : (request.config.systemInstruction as any).text ||
-            (request.config.systemInstruction as Content).parts?.[0]?.text ||
-            '';
+        typeof systemInstruction === 'string'
+          ? systemInstruction
+          : 'text' in systemInstruction
+            ? systemInstruction.text
+            : (systemInstruction as Content).parts?.[0]?.text || '';
 
       messages.unshift({
         role: 'system',
@@ -213,7 +280,7 @@ export class MechLLMsContentGenerator implements ContentGenerator {
       temperature: request.config?.temperature,
       max_tokens: request.config?.maxOutputTokens,
       top_p: request.config?.topP,
-      tools: request.config?.tools as unknown[],
+      tools: this.convertToOpenAITools(request.config?.tools as unknown[]),
       stream: false,
     };
 
@@ -234,9 +301,7 @@ export class MechLLMsContentGenerator implements ContentGenerator {
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(
-        `mech-llms API error (${response.status}): ${errorText}`,
-      );
+      throw new Error(`mech-llms API error (${response.status}): ${errorText}`);
     }
 
     const mechResponse: MechLLMsResponse = await response.json();
@@ -245,19 +310,23 @@ export class MechLLMsContentGenerator implements ContentGenerator {
 
   async generateContentStream(
     request: GenerateContentParameters,
-    userPromptId: string,
+    _userPromptId: string,
   ): Promise<AsyncGenerator<GenerateContentResponse>> {
     const contents = toContents(request.contents);
     const messages = this.convertToMechLLMsMessages(contents);
 
     // Add system instruction
     if (request.config?.systemInstruction) {
+      const systemInstruction = request.config.systemInstruction as
+        | string
+        | { text: string }
+        | Content;
       const systemText =
-        typeof request.config.systemInstruction === 'string'
-          ? request.config.systemInstruction
-          : (request.config.systemInstruction as any).text ||
-            (request.config.systemInstruction as Content).parts?.[0]?.text ||
-            '';
+        typeof systemInstruction === 'string'
+          ? systemInstruction
+          : 'text' in systemInstruction
+            ? systemInstruction.text
+            : (systemInstruction as Content).parts?.[0]?.text || '';
 
       messages.unshift({
         role: 'system',
@@ -271,7 +340,7 @@ export class MechLLMsContentGenerator implements ContentGenerator {
       temperature: request.config?.temperature,
       max_tokens: request.config?.maxOutputTokens,
       top_p: request.config?.topP,
-      tools: request.config?.tools as unknown[],
+      tools: this.convertToOpenAITools(request.config?.tools as unknown[]),
       stream: true,
     };
 
@@ -292,9 +361,7 @@ export class MechLLMsContentGenerator implements ContentGenerator {
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(
-        `mech-llms API error (${response.status}): ${errorText}`,
-      );
+      throw new Error(`mech-llms API error (${response.status}): ${errorText}`);
     }
 
     return this.processStreamResponse(response, request.model);
@@ -402,8 +469,7 @@ export class MechLLMsContentGenerator implements ContentGenerator {
     const textLength = contents
       .flatMap((content) => content.parts || [])
       .map((part) => part.text || '')
-      .join('')
-      .length;
+      .join('').length;
 
     const estimatedTokens = Math.ceil(textLength / 4);
 
@@ -413,7 +479,7 @@ export class MechLLMsContentGenerator implements ContentGenerator {
   }
 
   async embedContent(
-    request: EmbedContentParameters,
+    _request: EmbedContentParameters,
   ): Promise<EmbedContentResponse> {
     // mech-llms doesn't currently support embeddings
     // For now, throw an error - this can be implemented later if needed
